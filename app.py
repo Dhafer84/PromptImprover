@@ -119,8 +119,7 @@ with colA:
         height=160,          # petit cadre scrollable
         disabled=True
     )
-    with st.expander("📋 Voir et copier (format code)"):
-    st.code(row["prompt"], language="text")
+    
 
     st.caption("💡 Astuce : clique dans le cadre puis ⌘A → ⌘C pour copier.")
 
