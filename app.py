@@ -110,7 +110,6 @@ colA, colB = st.columns([1, 1])
 with colA:
     st.subheader("Dataset example")
     st.markdown("**Prompt (original):**")
-    with st.expander("📋 Voir et copier (format code)"):
     
     st.text_area(
         label="",
@@ -118,7 +117,6 @@ with colA:
         height=160,          # petit cadre scrollable
         disabled=True
     )
-    
 
     st.caption("💡 Astuce : clique dans le cadre puis ⌘A → ⌘C pour copier.")
 
