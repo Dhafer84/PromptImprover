@@ -113,7 +113,6 @@ with colA:
     with st.expander("📋 Voir et copier (format code)"):
     
     st.text_area(
-        
         label="",
         value=row["prompt"],
         height=160,          # petit cadre scrollable
