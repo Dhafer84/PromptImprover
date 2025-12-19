@@ -110,7 +110,8 @@ colA, colB = st.columns([1, 1])
 with colA:
     st.subheader("Dataset example")
     st.markdown("**Prompt (original):**")
-
+    with st.expander("📋 Voir et copier (format code)"):
+    st.code(row["prompt"], language="text")
     st.text_area(
         label="",
         value=row["prompt"],
