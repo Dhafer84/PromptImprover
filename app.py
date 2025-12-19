@@ -6,16 +6,22 @@ import pandas as pd
 
 from dataset_loader import DatasetConfig, load_gpt4all_sample
 from prompt_improver import ImproveOptions, build_improvement_instructions
-from llm_clients import LLMConfig, chat_completion, GROQ_FALLBACK_MODELS
-from scoring import analyze_prompt, compare_outputs
+from llm_clients import LLMConfig, chat_completion
+from scoring import analyze_prompt
 
 
-st.set_page_config(page_title="Prompt Improver (GPT4All dataset)", layout="wide")
+# =========================
+# Page setup
+# =========================
+st.set_page_config(page_title="Prompt Improver", layout="wide")
 
-st.title("Prompt Improver — Professional Prompt Upgrade + Before/After Comparison")
-st.caption("Dhafer_BOUTHELJA - 2025 - Using GPT4All Prompt Generations")
+st.title("Prompt Improver — Guided Demo")
+st.caption("Follow the steps: 1) Choose  2) Improve  3) Test (Before/After)")
 
 
+# =========================
+# Cache dataset sample
+# =========================
 @st.cache_data(show_spinner=True, ttl=60 * 60)
 def cached_load(sample_size: int) -> pd.DataFrame:
     cfg = DatasetConfig(sample_size=sample_size)
@@ -28,7 +34,9 @@ def pick_row(df: pd.DataFrame, idx: int | None = None) -> pd.Series:
     return df.iloc[idx]
 
 
-# ---------------- Sidebar ----------------
+# =========================
+# Sidebar — Dataset & Model
+# =========================
 st.sidebar.header("Dataset & Model Settings")
 
 sample_size = st.sidebar.slider(
@@ -66,14 +74,20 @@ row = pick_row(filtered, None if random_btn else int(row_index))
 
 provider = st.sidebar.selectbox("LLM Provider", ["groq", "openai"], index=0)
 
-# --- Models UI ---
 st.sidebar.subheader("Model")
 if provider == "groq":
-    # Dropdown pro (évite les typos + évite modèles morts)
-    groq_models = ["llama-3.1-8b-instant"] + [m for m in GROQ_FALLBACK_MODELS if m != "llama-3.1-8b-instant"]
-    model = st.sidebar.selectbox("Model (Groq)", groq_models, index=0)
+    # Mets ici des modèles Groq valides chez toi
+    model = st.sidebar.selectbox(
+        "Model (Groq)",
+        [
+            "llama-3.1-8b-instant",
+            "llama-3.2-70b-versatile",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it",
+        ],
+        index=0,
+    )
 else:
-    # OpenAI: tu peux changer selon ton compte
     model = st.sidebar.text_input("Model (OpenAI)", value="gpt-4o-mini")
 
 temperature = st.sidebar.slider("Temperature", 0.0, 1.0, 0.2, 0.05)
@@ -104,151 +118,195 @@ opts = ImproveOptions(
 
 llm_cfg = LLMConfig(provider=provider, model=model, temperature=temperature, max_tokens=max_tokens)
 
-# ---------------- Main UI ----------------
-colA, colB = st.columns([1, 1])
 
-with colA:
-    st.subheader("Dataset example")
-    st.markdown("**Prompt (original):**")
-    
-    st.text_area(
-        label="",
-        value=row["prompt"],
-        height=160,          # petit cadre scrollable
-        disabled=True
+# =========================
+# Session state init
+# =========================
+if "current_prompt" not in st.session_state:
+    st.session_state["current_prompt"] = ""
+
+if "improved_prompt" not in st.session_state:
+    st.session_state["improved_prompt"] = ""
+
+if "out_original" not in st.session_state:
+    st.session_state["out_original"] = ""
+
+if "out_improved" not in st.session_state:
+    st.session_state["out_improved"] = ""
+
+if "model_orig" not in st.session_state:
+    st.session_state["model_orig"] = ""
+
+if "model_impr" not in st.session_state:
+    st.session_state["model_impr"] = ""
+
+
+# =========================
+# STEP 1 — Choose prompt
+# =========================
+with st.expander("Step 1 — Choose a prompt", expanded=True):
+    mode = st.radio(
+        "Select input mode",
+        ["Dataset example (filtered)", "Manual (paste your prompt)"],
+        horizontal=True
     )
 
-    st.caption("💡 Astuce : clique dans le cadre puis ⌘A → ⌘C pour copier.")
+    if mode == "Dataset example (filtered)":
+        st.info("Use the left sidebar filters (keyword, index, random), then load the selected prompt here.")
+        if st.button("📥 Load selected dataset prompt"):
+            st.session_state["current_prompt"] = row["prompt"]
+            # reset previous outputs when changing prompt
+            st.session_state["improved_prompt"] = ""
+            st.session_state["out_original"] = ""
+            st.session_state["out_improved"] = ""
+            st.session_state["model_orig"] = ""
+            st.session_state["model_impr"] = ""
 
-
-    st.markdown("**Dataset response (reference):**")
-    st.code(row["response"], language="text")
-
-    if row.get("source", ""):
-        st.caption(f"Source: {row.get('source', '')}")
-
-with colB:
-    st.subheader("Improve the prompt (Professional Upgrade)")
-    report = analyze_prompt(row["prompt"])
-    st.markdown(f"**Prompt quality (heuristic):** `{report.clarity_score}/100`")
-
-    if report.notes:
-        st.info("• " + "\n• ".join(report.notes))
-
-    system_improve = build_improvement_instructions(opts)
-
-    st.markdown("**System instruction used for improvement (editable):**")
-    system_improve_edit = st.text_area("", value=system_improve, height=220)
-
-    improve_btn = st.button("✨ Generate Improved Prompt")
-
-    improved_prompt = st.session_state.get("improved_prompt", "")
-
-    if improve_btn:
-        try:
-            improved, used_model = chat_completion(
-                cfg=llm_cfg,
-                system=system_improve_edit,
-                user=row["prompt"],
-            )
-            improved = (improved or "").strip()
-            st.session_state["improved_prompt"] = improved
-            improved_prompt = improved
-
-            # ✅ warning si fallback
-            if provider == "groq" and used_model != llm_cfg.model:
-                st.warning(f"⚠️ Model `{llm_cfg.model}` is deprecated. Fallback to `{used_model}`.")
-
-        except Exception as e:
-            st.error(str(e))
-
-    st.markdown("**Improved prompt:**")
-    improved_prompt = st.text_area(" ", value=improved_prompt, height=260)
-
-st.divider()
-
-st.subheader("Before / After comparison (same model, same question)")
-st.caption("We run the model with: (1) original prompt, (2) improved prompt. We also show a heuristic similarity vs dataset reference.")
-
-run_compare = st.button("▶️ Run comparison")
-
-if run_compare:
-    if not improved_prompt.strip():
-        st.warning("Generate an improved prompt first (or paste one).")
     else:
-        try:
-            with st.spinner("Running original prompt..."):
-                out_original, used_model_orig = chat_completion(
+        manual = st.text_area(
+            "Paste your prompt",
+            height=180,
+            placeholder="Example: I need a MISRA-C compliant code review checklist for STM32 drivers..."
+        )
+        if st.button("📥 Use this prompt"):
+            st.session_state["current_prompt"] = manual
+            st.session_state["improved_prompt"] = ""
+            st.session_state["out_original"] = ""
+            st.session_state["out_improved"] = ""
+            st.session_state["model_orig"] = ""
+            st.session_state["model_impr"] = ""
+
+    st.markdown("**Selected prompt (scrollable):**")
+    st.text_area(
+        label="",
+        value=st.session_state["current_prompt"],
+        height=160,
+        disabled=True
+    )
+    st.caption("Tip: click inside then ⌘A → ⌘C to copy. (Mac)")
+
+
+# =========================
+# STEP 2 — Improve prompt
+# =========================
+with st.expander("Step 2 — Improve the prompt (Professional Upgrade)", expanded=True):
+    current = st.session_state["current_prompt"].strip()
+
+    if not current:
+        st.warning("Load or paste a prompt in Step 1.")
+    else:
+        report = analyze_prompt(current)
+        st.markdown(f"**Prompt quality (heuristic):** `{report.clarity_score}/100`")
+        if report.notes:
+            st.info("• " + "\n• ".join(report.notes))
+
+        system_improve = build_improvement_instructions(opts)
+
+        st.markdown("**System instruction used for improvement (editable):**")
+        system_improve_edit = st.text_area(
+            "",
+            value=system_improve,
+            height=200
+        )
+
+        if st.button("✨ Generate Improved Prompt"):
+            try:
+                improved, used_model = chat_completion(
                     cfg=llm_cfg,
-                    system="You are a helpful assistant.",
-                    user=row["prompt"],
+                    system=system_improve_edit,
+                    user=current
                 )
-                out_original = (out_original or "").strip()
+                st.session_state["improved_prompt"] = (improved or "").strip()
 
-            with st.spinner("Running improved prompt..."):
-                out_improved, used_model_impr = chat_completion(
-                    cfg=llm_cfg,
-                    system="You are a helpful assistant.",
-                    user=improved_prompt,
-                )
-                out_improved = (out_improved or "").strip()
+                # Warning fallback Groq
+                if provider == "groq" and used_model != llm_cfg.model:
+                    st.warning(f"⚠️ Model `{llm_cfg.model}` is deprecated. Fallback to `{used_model}`.")
 
-            st.session_state["out_original"] = out_original
-            st.session_state["out_improved"] = out_improved
-            st.session_state["used_model_orig"] = used_model_orig
-            st.session_state["used_model_impr"] = used_model_impr
+            except Exception as e:
+                st.error(str(e))
 
-            # ✅ warnings fallback
-            if provider == "groq":
-                if used_model_orig != llm_cfg.model:
-                    st.warning(f"⚠️ Original run fallback: `{llm_cfg.model}` → `{used_model_orig}`.")
-                if used_model_impr != llm_cfg.model:
-                    st.warning(f"⚠️ Improved run fallback: `{llm_cfg.model}` → `{used_model_impr}`.")
+        st.markdown("**Improved prompt (scrollable):**")
+        st.text_area(
+            label="",
+            value=st.session_state["improved_prompt"],
+            height=220
+        )
 
-        except Exception as e:
-            st.error(str(e))
 
-out_original = st.session_state.get("out_original", "")
-out_improved = st.session_state.get("out_improved", "")
-used_model_orig = st.session_state.get("used_model_orig", "")
-used_model_impr = st.session_state.get("used_model_impr", "")
+# =========================
+# STEP 3 — Before/After test
+# =========================
+with st.expander("Step 3 — Test (Before / After)", expanded=True):
+    current = st.session_state["current_prompt"].strip()
+    improved = st.session_state["improved_prompt"].strip()
 
-c1, c2, c3 = st.columns([1, 1, 1])
+    if not current:
+        st.warning("Step 1 is required (select a prompt).")
+    elif not improved:
+        st.warning("Step 2 is required (generate the improved prompt).")
+    else:
+        if st.button("▶️ Run Before/After comparison"):
+            try:
+                with st.spinner("Running with original prompt..."):
+                    out_original, model_orig = chat_completion(
+                        cfg=llm_cfg,
+                        system="You are a helpful assistant.",
+                        user=current
+                    )
 
-with c1:
-    st.markdown("### Output: Original prompt")
-    if used_model_orig:
-        st.caption(f"Model used: `{used_model_orig}`")
-    st.code(out_original, language="text")
+                with st.spinner("Running with improved prompt..."):
+                    out_improved, model_impr = chat_completion(
+                        cfg=llm_cfg,
+                        system="You are a helpful assistant.",
+                        user=improved
+                    )
 
-with c2:
-    st.markdown("### Output: Improved prompt")
-    if used_model_impr:
-        st.caption(f"Model used: `{used_model_impr}`")
-    st.code(out_improved, language="text")
+                st.session_state["out_original"] = (out_original or "").strip()
+                st.session_state["out_improved"] = (out_improved or "").strip()
+                st.session_state["model_orig"] = model_orig
+                st.session_state["model_impr"] = model_impr
 
-with c3:
-    st.markdown("### Quick metrics")
-    ref = row["response"]
-    sim_orig = compare_outputs(ref, out_original)
-    sim_impr = compare_outputs(ref, out_improved)
+                if provider == "groq":
+                    if model_orig != llm_cfg.model:
+                        st.warning(f"⚠️ Original run fallback: `{llm_cfg.model}` → `{model_orig}`.")
+                    if model_impr != llm_cfg.model:
+                        st.warning(f"⚠️ Improved run fallback: `{llm_cfg.model}` → `{model_impr}`.")
 
-    st.metric("Similarity to dataset ref (orig)", f"{sim_orig}/100")
-    st.metric("Similarity to dataset ref (improved)", f"{sim_impr}/100")
+            except Exception as e:
+                st.error(str(e))
 
-    if out_improved and sim_impr >= sim_orig + 5:
-        st.success("Improved prompt looks closer to reference (heuristic).")
-    elif out_improved and sim_impr < sim_orig - 5:
-        st.warning("Improved prompt looks further from reference (heuristic).")
-    elif out_improved:
-        st.info("No clear change by similarity metric (heuristic).")
+        col1, col2 = st.columns(2)
 
-st.divider()
-st.subheader("Tips")
-st.markdown(
-    """
-- Sur Streamlit Cloud, **évite** de charger tout le dataset : utilise le slider sample (200–5000).
-- La **similarité** n’est pas la vérité : c’est juste un indicateur “proche du style / contenu”.
-- Pour une démo pro : compare un prompt brut vs un prompt avec **Role + Output Format + Constraints**.
+        with col1:
+            st.markdown("### Output — Original")
+            if st.session_state.get("model_orig"):
+                st.caption(f"Model used: `{st.session_state['model_orig']}`")
+            st.text_area(
+                "",
+                value=st.session_state.get("out_original", ""),
+                height=280
+            )
+
+        with col2:
+            st.markdown("### Output — Improved")
+            if st.session_state.get("model_impr"):
+                st.caption(f"Model used: `{st.session_state['model_impr']}`")
+            st.text_area(
+                "",
+                value=st.session_state.get("out_improved", ""),
+                height=280
+            )
+
+
+# =========================
+# Small help section
+# =========================
+with st.expander("ℹ️ Help / Tips", expanded=False):
+    st.markdown(
+        """
+- **Step 1**: Choose a dataset prompt (via sidebar) or paste your own.
+- **Step 2**: Generate a professional improved prompt (Role + Goal + Output format + Constraints).
+- **Step 3**: Compare model answers before/after.
+- If Groq shows **model_decommissioned**, the app will automatically fallback and show a warning.
 """
-)
+    )
