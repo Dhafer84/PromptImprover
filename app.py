@@ -13,7 +13,7 @@ from scoring import analyze_prompt, compare_outputs
 st.set_page_config(page_title="Prompt Improver (GPT4All dataset)", layout="wide")
 
 st.title("Prompt Improver — Professional Prompt Upgrade + Before/After Comparison")
-st.caption("Dataset: nomic-ai/gpt4all_prompt_generations_with_p3 (sampled). Works locally on Mac + deployable on streamlit.app")
+st.caption("Dhafer_BOUTHELJA - 2025 - Using GPT4All Prompt Generations")
 
 
 @st.cache_data(show_spinner=True, ttl=60 * 60)
