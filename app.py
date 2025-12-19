@@ -110,8 +110,7 @@ colA, colB = st.columns([1, 1])
 with colA:
     st.subheader("Dataset example")
     st.markdown("**Prompt (original):**")
-    with st.expander("🔍 View original prompt"):
-    st.code(prompt_original, language="text", height=200)
+    st.code(row["prompt"], language="text")
 
     st.markdown("**Dataset response (reference):**")
     st.code(row["response"], language="text")
