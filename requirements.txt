@@ -1,0 +1,7 @@
+streamlit>=1.36
+pandas>=2.0
+datasets>=2.20
+huggingface_hub>=0.23
+openai>=1.30
+groq>=0.9
+rapidfuzz>=3.6
