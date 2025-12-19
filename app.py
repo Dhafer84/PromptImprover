@@ -6,7 +6,7 @@ import pandas as pd
 
 from dataset_loader import DatasetConfig, load_gpt4all_sample
 from prompt_improver import ImproveOptions, build_improvement_instructions
-from llm_clients import LLMConfig, chat_completion
+from llm_clients import LLMConfig, chat_completion, GROQ_FALLBACK_MODELS
 from scoring import analyze_prompt, compare_outputs
 
 
@@ -31,7 +31,14 @@ def pick_row(df: pd.DataFrame, idx: int | None = None) -> pd.Series:
 # ---------------- Sidebar ----------------
 st.sidebar.header("Dataset & Model Settings")
 
-sample_size = st.sidebar.slider("Dataset sample size (for speed)", min_value=200, max_value=5000, value=1500, step=100)
+sample_size = st.sidebar.slider(
+    "Dataset sample size (for speed)",
+    min_value=200,
+    max_value=5000,
+    value=1500,
+    step=100,
+)
+
 df = cached_load(sample_size)
 
 query = st.sidebar.text_input("Search in prompts (keyword)", "")
@@ -40,32 +47,42 @@ if query.strip():
     q = query.strip().lower()
     filtered = df[df["prompt"].str.lower().str.contains(q, na=False)]
 
-st.sidebar.write(f"Rows available: **{len(filtered)}** / {len(df)}")
-
-row_index = st.sidebar.number_input("Pick row index (in filtered set)", min_value=0, max_value=max(0, len(filtered)-1), value=0, step=1)
-random_btn = st.sidebar.button("🎲 Random example")
+st.sidebar.write(f"Rows available: **{len(filtered)} / {len(df)}**")
 
 if len(filtered) == 0:
     st.error("No rows matched your search. Try another keyword.")
     st.stop()
 
+row_index = st.sidebar.number_input(
+    "Pick row index (in filtered set)",
+    min_value=0,
+    max_value=max(0, len(filtered) - 1),
+    value=0,
+    step=1,
+)
+
+random_btn = st.sidebar.button("🎲 Random example")
 row = pick_row(filtered, None if random_btn else int(row_index))
 
 provider = st.sidebar.selectbox("LLM Provider", ["groq", "openai"], index=0)
 
-# Default models (you can change)
+# --- Models UI ---
+st.sidebar.subheader("Model")
 if provider == "groq":
-    model = st.sidebar.text_input("Model (Groq)", value="llama-3.1-70b-versatile")
+    # Dropdown pro (évite les typos + évite modèles morts)
+    groq_models = ["llama-3.1-8b-instant"] + [m for m in GROQ_FALLBACK_MODELS if m != "llama-3.1-8b-instant"]
+    model = st.sidebar.selectbox("Model (Groq)", groq_models, index=0)
 else:
+    # OpenAI: tu peux changer selon ton compte
     model = st.sidebar.text_input("Model (OpenAI)", value="gpt-4o-mini")
 
 temperature = st.sidebar.slider("Temperature", 0.0, 1.0, 0.2, 0.05)
 max_tokens = st.sidebar.slider("Max tokens", 200, 2000, 700, 50)
 
-
 st.sidebar.divider()
 st.sidebar.header("Prompt Improvement Options")
-role = st.sidebar.text_input("Role", value="Senior software engineer and technical writer")
+
+role = st.sidebar.text_input("Role", value="Senior software engineer")
 goal = st.sidebar.text_input("Goal", value="Deliver a correct, actionable, well-structured answer")
 tone = st.sidebar.selectbox("Tone", ["Professional", "Concise", "Strict", "Friendly"], index=0)
 language = st.sidebar.selectbox("Language", ["English", "French"], index=0)
@@ -94,15 +111,18 @@ with colA:
     st.subheader("Dataset example")
     st.markdown("**Prompt (original):**")
     st.code(row["prompt"], language="text")
+
     st.markdown("**Dataset response (reference):**")
     st.code(row["response"], language="text")
+
     if row.get("source", ""):
-        st.caption(f"Source: {row.get('source','')}")
+        st.caption(f"Source: {row.get('source', '')}")
 
 with colB:
     st.subheader("Improve the prompt (Professional Upgrade)")
     report = analyze_prompt(row["prompt"])
     st.markdown(f"**Prompt quality (heuristic):** `{report.clarity_score}/100`")
+
     if report.notes:
         st.info("• " + "\n• ".join(report.notes))
 
@@ -117,13 +137,19 @@ with colB:
 
     if improve_btn:
         try:
-            improved = chat_completion(
+            improved, used_model = chat_completion(
                 cfg=llm_cfg,
                 system=system_improve_edit,
                 user=row["prompt"],
-            ).strip()
+            )
+            improved = (improved or "").strip()
             st.session_state["improved_prompt"] = improved
             improved_prompt = improved
+
+            # ✅ warning si fallback
+            if provider == "groq" and used_model != llm_cfg.model:
+                st.warning(f"⚠️ Model `{llm_cfg.model}` is deprecated. Fallback to `{used_model}`.")
+
         except Exception as e:
             st.error(str(e))
 
@@ -133,7 +159,7 @@ with colB:
 st.divider()
 
 st.subheader("Before / After comparison (same model, same question)")
-st.caption("We run the model with: (1) original prompt, (2) improved prompt, and compare outputs vs dataset reference.")
+st.caption("We run the model with: (1) original prompt, (2) improved prompt. We also show a heuristic similarity vs dataset reference.")
 
 run_compare = st.button("▶️ Run comparison")
 
@@ -143,36 +169,53 @@ if run_compare:
     else:
         try:
             with st.spinner("Running original prompt..."):
-                out_original = chat_completion(
+                out_original, used_model_orig = chat_completion(
                     cfg=llm_cfg,
                     system="You are a helpful assistant.",
                     user=row["prompt"],
-                ).strip()
+                )
+                out_original = (out_original or "").strip()
 
             with st.spinner("Running improved prompt..."):
-                out_improved = chat_completion(
+                out_improved, used_model_impr = chat_completion(
                     cfg=llm_cfg,
                     system="You are a helpful assistant.",
                     user=improved_prompt,
-                ).strip()
+                )
+                out_improved = (out_improved or "").strip()
 
             st.session_state["out_original"] = out_original
             st.session_state["out_improved"] = out_improved
+            st.session_state["used_model_orig"] = used_model_orig
+            st.session_state["used_model_impr"] = used_model_impr
+
+            # ✅ warnings fallback
+            if provider == "groq":
+                if used_model_orig != llm_cfg.model:
+                    st.warning(f"⚠️ Original run fallback: `{llm_cfg.model}` → `{used_model_orig}`.")
+                if used_model_impr != llm_cfg.model:
+                    st.warning(f"⚠️ Improved run fallback: `{llm_cfg.model}` → `{used_model_impr}`.")
 
         except Exception as e:
             st.error(str(e))
 
 out_original = st.session_state.get("out_original", "")
 out_improved = st.session_state.get("out_improved", "")
+used_model_orig = st.session_state.get("used_model_orig", "")
+used_model_impr = st.session_state.get("used_model_impr", "")
 
 c1, c2, c3 = st.columns([1, 1, 1])
 
 with c1:
     st.markdown("### Output: Original prompt")
+    if used_model_orig:
+        st.caption(f"Model used: `{used_model_orig}`")
     st.code(out_original, language="text")
 
 with c2:
     st.markdown("### Output: Improved prompt")
+    if used_model_impr:
+        st.caption(f"Model used: `{used_model_impr}`")
     st.code(out_improved, language="text")
 
 with c3:
@@ -184,7 +227,6 @@ with c3:
     st.metric("Similarity to dataset ref (orig)", f"{sim_orig}/100")
     st.metric("Similarity to dataset ref (improved)", f"{sim_impr}/100")
 
-    # simple verdict
     if out_improved and sim_impr >= sim_orig + 5:
         st.success("Improved prompt looks closer to reference (heuristic).")
     elif out_improved and sim_impr < sim_orig - 5:
