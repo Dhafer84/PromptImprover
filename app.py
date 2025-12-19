@@ -111,13 +111,16 @@ with colA:
     st.subheader("Dataset example")
     st.markdown("**Prompt (original):**")
     with st.expander("📋 Voir et copier (format code)"):
-    st.code(row["prompt"], language="text")
+    
     st.text_area(
+        
         label="",
         value=row["prompt"],
         height=160,          # petit cadre scrollable
         disabled=True
     )
+    with st.expander("📋 Voir et copier (format code)"):
+    st.code(row["prompt"], language="text")
 
     st.caption("💡 Astuce : clique dans le cadre puis ⌘A → ⌘C pour copier.")
 
