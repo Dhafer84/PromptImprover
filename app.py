@@ -310,3 +310,13 @@ with st.expander("ℹ️ Help / Tips", expanded=False):
 - If Groq shows **model_decommissioned**, the app will automatically fallback and show a warning.
 """
     )
+st.markdown(
+    """
+    <hr style="margin-top:40px;"/>
+    <div style="text-align:center; opacity:0.8; font-size:13px;">
+        Built by <b>Dhafer Bouthelja</b> • Prompt Improver<br/>
+        Cloud & DevOps Engineer • Software Quality
+    </div>
+    """,
+    unsafe_allow_html=True
+)
