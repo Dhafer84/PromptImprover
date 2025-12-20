@@ -14,7 +14,6 @@ from scoring import analyze_prompt
 # Page setup
 # =========================
 st.set_page_config(page_title="Prompt Improver", page_icon="assets/logo.png", layout="wide")
-st.image("assets/logo.png", width=500)
 
 st.title("Prompt Improver")
 st.caption("Follow the steps: 1) Choose  2) Improve  3) Test (Before/After)")
@@ -39,6 +38,13 @@ def pick_row(df: pd.DataFrame, idx: int | None = None) -> pd.Series:
 # Sidebar — Dataset & Model
 # =========================
 st.sidebar.header("Dataset & Model Settings")
+# Sidebar branding
+st.sidebar.image("assets/logo.png", width=300)
+st.sidebar.markdown(
+    "<div style='text-align:center; font-weight:600;'>Prompt Improver</div>",
+    unsafe_allow_html=True
+)
+st.sidebar.markdown("---")
 
 sample_size = st.sidebar.slider(
     "Dataset sample size (for speed)",
