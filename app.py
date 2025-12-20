@@ -13,7 +13,7 @@ from scoring import analyze_prompt
 # =========================
 # Page setup
 # =========================
-st.set_page_config(page_title="Prompt Improver", layout="wide")
+st.set_page_config(page_title="Prompt Improver", page_icon="assets/logo.png", layout="wide")
 
 st.title("Prompt Improver — Guided Demo")
 st.caption("Follow the steps: 1) Choose  2) Improve  3) Test (Before/After)")
