@@ -310,6 +310,12 @@ with st.expander("ℹ️ Help / Tips", expanded=False):
 - If Groq shows **model_decommissioned**, the app will automatically fallback and show a warning.
 """
     )
+with st.expander("📘 About / README", expanded=False):
+    try:
+        with open("README.md", "r", encoding="utf-8") as f:
+            st.markdown(f.read())
+    except FileNotFoundError:
+        st.info("README.md not found.")
 st.markdown(
     """
     <hr style="margin-top:40px;"/>
